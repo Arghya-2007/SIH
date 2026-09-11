@@ -11,11 +11,28 @@ import { ZoneContainer } from '@/components/monitoring/ZoneContainer';
 import { MlFleetStatusBar } from '@/components/monitoring/MlFleetStatusBar';
 import { EmptyState } from '@/components/common/EmptyState';
 import { HardwareOnboardingWizard } from '@/components/common/HardwareOnboardingWizard';
-import { Activity, Cpu } from 'lucide-react';
+import { Activity, Cpu, FileText } from 'lucide-react';
+import { ReportModal } from '@/components/common/ReportModal';
+import { buildMonitoringReport, ExecutiveReportData } from '@/lib/reportGenerator';
 
 export default function MonitoringPage() {
-  const { readings, nodeStatuses, mlPredictions, stats } = useRealtime();
+  const { readings, nodeStatuses, mlPredictions, stats, metrics } = useRealtime();
   const [showHardwareGuide, setShowHardwareGuide] = useState(false);
+  const [isReportOpen, setIsReportOpen] = useState(false);
+  const [reportData, setReportData] = useState<ExecutiveReportData | null>(null);
+
+  const handleGenerateReport = () => {
+    const report = buildMonitoringReport({
+      readings,
+      nodeStatuses,
+      mlPredictions,
+      stats,
+      metrics,
+      activeZones,
+    });
+    setReportData(report);
+    setIsReportOpen(true);
+  };
   const {
     selectedZone,
     setSelectedZone,
@@ -55,6 +72,16 @@ export default function MonitoringPage() {
           >
             <Cpu className="w-3.5 h-3.5" />
             <span>{showHardwareGuide ? 'Hide Hardware Setup' : 'Connect Nodes & Demo'}</span>
+          </button>
+
+          {/* Shift Report Button */}
+          <button
+            onClick={handleGenerateReport}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white border border-slate-700 text-xs font-mono font-bold tracking-wide transition-all hover:scale-105 active:scale-95 shadow-sm"
+            title="Generate Shift Operations & Telemetry Geotechnical Report"
+          >
+            <FileText className="w-3.5 h-3.5 text-amber-400" />
+            <span>Shift Report</span>
           </button>
 
           <div className="flex items-center gap-2 text-xs font-mono text-[#14213d] dark:text-[#e5e5e5] bg-[#f4f5f7] dark:bg-[#14213d]/70 px-3.5 py-2 rounded-xl border border-[#e5e5e5] dark:border-[#14213d] shadow-sm">
@@ -133,6 +160,13 @@ export default function MonitoringPage() {
           ))
         )}
       </div>
+
+      {/* Boardroom Shift Operations Report Modal */}
+      <ReportModal
+        isOpen={isReportOpen}
+        onClose={() => setIsReportOpen(false)}
+        report={reportData}
+      />
     </div>
   );
 }

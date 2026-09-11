@@ -22,7 +22,10 @@ import {
   Layers,
   Volume2,
   VolumeX,
+  FileText,
 } from 'lucide-react';
+import { ReportModal } from '@/components/common/ReportModal';
+import { buildAlertsReport, ExecutiveReportData } from '@/lib/reportGenerator';
 
 interface MlPredictionCardProps {
   pred: ShadowMlPrediction;
@@ -237,11 +240,28 @@ export default function AlertsPage() {
     testVoiceAlert,
     isSpeaking,
     lastSpokenMessage,
+    stats,
+    metrics,
   } = useRealtime();
   const [activeTab, setActiveTab] = useState<'all' | 'ml' | 'hardware'>('all');
   const [selectedMlPrediction, setSelectedMlPrediction] = useState<ShadowMlPrediction | null>(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
   const [advisorySentNodes, setAdvisorySentNodes] = useState<Record<string, boolean>>({});
+
+  // Safety Incident Dossier Report State
+  const [isReportOpen, setIsReportOpen] = useState(false);
+  const [reportData, setReportData] = useState<ExecutiveReportData | null>(null);
+
+  const handleGenerateReport = () => {
+    const report = buildAlertsReport({
+      alerts,
+      mlPredictions,
+      stats,
+      metrics,
+    });
+    setReportData(report);
+    setIsReportOpen(true);
+  };
 
   // Flatten all active ML predictions across all zones
   const activeMlPredictions = useMemo(() => {
@@ -362,6 +382,16 @@ export default function AlertsPage() {
           >
             <Flame className="w-3.5 h-3.5 text-amber-300" />
             Simulate ML Risk
+          </button>
+
+          {/* Incident Dossier Report Button */}
+          <button
+            onClick={handleGenerateReport}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white border border-slate-700 text-xs font-mono font-bold tracking-wide transition-all hover:scale-105 active:scale-95 shadow-sm"
+            title="Generate DGMS Geotechnical Safety Incident Audit Dossier"
+          >
+            <FileText className="w-3.5 h-3.5 text-amber-400" />
+            <span>Incident Dossier</span>
           </button>
 
           <div className="px-3.5 py-1.5 rounded-xl bg-[#f4f5f7] dark:bg-[#14213d]/70 border border-[#e5e5e5] dark:border-[#14213d] text-xs font-mono text-[#14213d] dark:text-[#e5e5e5] shadow-sm">
@@ -589,6 +619,13 @@ export default function AlertsPage() {
         prediction={selectedMlPrediction}
         isOpen={isInspectorOpen}
         onClose={() => setIsInspectorOpen(false)}
+      />
+
+      {/* DGMS Safety Incident Dossier Modal */}
+      <ReportModal
+        isOpen={isReportOpen}
+        onClose={() => setIsReportOpen(false)}
+        report={reportData}
       />
     </div>
   );

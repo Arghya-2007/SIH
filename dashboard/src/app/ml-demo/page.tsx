@@ -16,7 +16,10 @@ import {
   Sliders,
   RefreshCw,
   TrendingUp,
+  FileText,
 } from 'lucide-react';
+import { ReportModal } from '@/components/common/ReportModal';
+import { buildMlDemoReport, ExecutiveReportData } from '@/lib/reportGenerator';
 
 interface PredictionResponse {
   anomaly_class: string;
@@ -97,6 +100,22 @@ export default function MLDemoPage() {
   const [serviceOnline, setServiceOnline] = useState<boolean | null>(null);
   const [activeCheckpoint, setActiveCheckpoint] = useState<string>('baseline_latest.pt');
   const streamRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Model Validation Audit Report State
+  const [isReportOpen, setIsReportOpen] = useState(false);
+  const [reportData, setReportData] = useState<ExecutiveReportData | null>(null);
+
+  const handleGenerateReport = () => {
+    const report = buildMlDemoReport({
+      sensorValues,
+      prediction,
+      driftStatus,
+      activePreset,
+      activeCheckpoint,
+    });
+    setReportData(report);
+    setIsReportOpen(true);
+  };
 
   const ML_BASE_URL = 'http://127.0.0.1:8000';
 
@@ -284,6 +303,16 @@ export default function MLDemoPage() {
             <span>Open Standalone Webview</span>
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
+
+          {/* Model Audit Report Button */}
+          <button
+            onClick={handleGenerateReport}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-mono font-bold bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white border-slate-700 transition-all hover:scale-105 active:scale-95 shadow-sm"
+            title="Generate AI Model Validation & Drift Certification Report"
+          >
+            <FileText className="w-3.5 h-3.5 text-amber-400" />
+            <span>Model Audit Report</span>
+          </button>
         </div>
       </div>
 
@@ -529,6 +558,13 @@ export default function MLDemoPage() {
           </div>
         </div>
       </div>
+
+      {/* AI Model Validation & Drift Certification Report Modal */}
+      <ReportModal
+        isOpen={isReportOpen}
+        onClose={() => setIsReportOpen(false)}
+        report={reportData}
+      />
     </div>
   );
 }

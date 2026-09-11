@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ShadowMlPrediction } from '@/types/ml';
 import { Badge } from '@/components/common/Badge';
 import { formatRelativeTime } from '@/lib/utils';
@@ -30,8 +31,13 @@ export function MlPredictionInspectorModal({
 }: MlPredictionInspectorModalProps) {
   const [feedbackSubmitted, setFeedbackSubmitted] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  if (!isOpen || !prediction) return null;
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!isOpen || !prediction || !mounted) return null;
 
   const isRisk = prediction.anomaly_class === 'subsidence_risk';
   const isNoise = prediction.anomaly_class === 'equipment_noise';
@@ -63,12 +69,12 @@ export function MlPredictionInspectorModal({
     }
   };
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="ml-inspector-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
     >
       <div
         className="relative w-full max-w-lg rounded-2xl bg-white dark:bg-[#0d1527] border border-[#e5e5e5] dark:border-[#14213d] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
@@ -284,6 +290,7 @@ export function MlPredictionInspectorModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
