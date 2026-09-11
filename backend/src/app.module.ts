@@ -8,6 +8,7 @@ import { ProcessingModule } from './processing/processing.module.js';
 import { StorageModule } from './storage/storage.module.js';
 import { RealtimeModule } from './realtime/realtime.module.js';
 import { AlertsModule } from './alerts/alerts.module.js';
+import { MlModule } from './ml/ml.module.js';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { AlertsModule } from './alerts/alerts.module.js';
     StorageModule,
     RealtimeModule,
     AlertsModule,
+    MlModule,
   ],
   controllers: [AppController],
   providers: [AppService],

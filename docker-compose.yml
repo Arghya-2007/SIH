@@ -85,6 +85,12 @@ services:
       - DATABASE_USER=${POSTGRES_USER:-sih_user}
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-sih_password}
       - DATABASE_NAME=${POSTGRES_DB:-sih_subsidence_db}
+      - ML_INFERENCE_URL=http://host.docker.internal:8000/predict
+      - ML_LOG_STORE_PATH=/app/data/predictions.db
+    volumes:
+      - ./backend/data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       mosquitto:
         condition: service_started

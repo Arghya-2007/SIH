@@ -17,6 +17,8 @@ import {
   Trash2,
   Check,
   Sparkles,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 
 export function AppHeader() {
@@ -29,6 +31,9 @@ export function AppHeader() {
     clearCache,
     isSimulationActive,
     toggleSimulation,
+    voiceAlertsEnabled,
+    toggleVoiceAlerts,
+    isSpeaking,
   } = useRealtime();
   const { theme, toggleTheme } = useTheme();
   const [timeString, setTimeString] = useState<string>('');
@@ -176,6 +181,40 @@ export function AppHeader() {
           title="Reconnect WebSocket Stream"
         >
           <RefreshCw className="w-4 h-4" />
+        </button>
+
+        {/* Voice Alert Speech & Chime Announcer Toggle */}
+        <button
+          onClick={toggleVoiceAlerts}
+          className={`relative p-2 rounded-xl border transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm flex items-center gap-1.5 ${
+            voiceAlertsEnabled
+              ? isSpeaking
+                ? 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/50 animate-pulse'
+                : 'bg-amber-500/10 hover:bg-amber-500/20 text-[#fca311] border-[#fca311]/40'
+              : 'bg-[#f4f5f7] hover:bg-[#e5e5e5] dark:bg-[#14213d]/60 dark:hover:bg-[#14213d] text-[#5c677d] dark:text-[#94a3b8] border-[#e5e5e5] dark:border-[#14213d]'
+          }`}
+          title={
+            voiceAlertsEnabled
+              ? isSpeaking
+                ? 'Voice Alert currently speaking... Click to mute'
+                : 'Voice Alerts Active (Web Speech & Audio Chime). Click to mute'
+              : 'Voice Alerts Muted. Click to activate'
+          }
+          aria-label="Toggle Voice Alerts"
+        >
+          {voiceAlertsEnabled ? (
+            <>
+              <Volume2 className={`w-4 h-4 ${isSpeaking ? 'animate-bounce text-red-500' : 'text-[#fca311]'}`} />
+              <span className="hidden lg:inline text-[11px] font-mono font-bold">
+                {isSpeaking ? 'SPEAKING' : 'VOICE ON'}
+              </span>
+            </>
+          ) : (
+            <>
+              <VolumeX className="w-4 h-4 text-[#5c677d] dark:text-[#94a3b8]" />
+              <span className="hidden lg:inline text-[11px] font-mono font-medium">VOICE OFF</span>
+            </>
+          )}
         </button>
 
         {/* Theme Toggle Button */}

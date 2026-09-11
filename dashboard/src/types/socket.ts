@@ -1,5 +1,6 @@
 import { ValidatedSensorReading } from './sensor';
 import { NodeStatusState } from './node';
+import { ShadowMlPrediction } from './ml';
 
 /**
  * WebSocket contract definitions matching Design&Architecture.md §6 and backend/realtime.gateway.ts
@@ -8,6 +9,7 @@ import { NodeStatusState } from './node';
 export interface SnapshotPayload {
   readings: ValidatedSensorReading[];
   statuses: NodeStatusState[];
+  mlPredictions?: ShadowMlPrediction[];
 }
 
 export interface JoinZonePayload {

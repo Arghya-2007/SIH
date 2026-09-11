@@ -8,12 +8,13 @@ import { GatewayStatusCard } from '@/components/monitoring/GatewayStatusCard';
 import { MonitoringControls } from '@/components/monitoring/MonitoringControls';
 import { GlobalZoneAverages } from '@/components/monitoring/GlobalZoneAverages';
 import { ZoneContainer } from '@/components/monitoring/ZoneContainer';
+import { MlFleetStatusBar } from '@/components/monitoring/MlFleetStatusBar';
 import { EmptyState } from '@/components/common/EmptyState';
 import { HardwareOnboardingWizard } from '@/components/common/HardwareOnboardingWizard';
 import { Activity, Cpu } from 'lucide-react';
 
 export default function MonitoringPage() {
-  const { readings, nodeStatuses, stats } = useRealtime();
+  const { readings, nodeStatuses, mlPredictions, stats } = useRealtime();
   const [showHardwareGuide, setShowHardwareGuide] = useState(false);
   const {
     selectedZone,
@@ -71,6 +72,12 @@ export default function MonitoringPage() {
       {/* Realtime ESP32 LoRa Gateway, Mosquitto MQTT & WebSocket Ingestion Status Card */}
       <GatewayStatusCard variant="full" />
 
+      {/* Real-Time ML Early Warning & Fleet Model Intelligence Bar */}
+      <MlFleetStatusBar
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+      />
+
       {/* Latency Tracker Metric Component */}
       <LatencyTracker />
 
@@ -121,6 +128,7 @@ export default function MonitoringPage() {
               nodeIds={nodeIds}
               readings={readings[zoneId] || {}}
               statuses={nodeStatuses[zoneId] || {}}
+              mlPredictions={mlPredictions[zoneId] || {}}
             />
           ))
         )}

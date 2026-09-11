@@ -14,6 +14,8 @@ import {
   ChevronRight,
   Terminal,
   Server,
+  BrainCircuit,
+  Globe2,
 } from 'lucide-react';
 import { useRealtime } from '@/hooks/useRealtime';
 import { cn } from '@/lib/utils';
@@ -21,18 +23,19 @@ import { cn } from '@/lib/utils';
 export function AppSidebar() {
   const pathname = usePathname();
   // Initially closed by default; user can extend/expand it
-  const [collapsed, setCollapsed] = useState(true);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem('sih_sidebar_collapsed');
-      if (saved !== null) {
-        setCollapsed(saved === 'true');
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('sih_sidebar_collapsed');
+        if (saved !== null) {
+          return saved === 'true';
+        }
+      } catch {
+        // Ignore localStorage errors
       }
-    } catch {
-      // Ignore localStorage errors
     }
-  }, []);
+    return true;
+  });
 
   const toggleSidebar = () => {
     setCollapsed(prev => {
@@ -56,6 +59,14 @@ export function AppSidebar() {
       icon: Home,
       badge: null,
       description: 'System landing & pipeline summary',
+    },
+    {
+      label: 'Digital Twin GIS',
+      href: '/digital-twin',
+      icon: Globe2,
+      badge: 'GIS Live',
+      badgeColor: 'bg-[#fca311]/15 text-amber-800 dark:text-[#fca311] border-[#fca311]/40',
+      description: 'OpenStreetMap & 3D strata model',
     },
     {
       label: 'Realtime Monitoring',
@@ -95,6 +106,14 @@ export function AppSidebar() {
       icon: Network,
       badge: null,
       description: 'Mesh to dashboard topology',
+    },
+    {
+      label: 'ML Testing Lab',
+      href: '/ml-demo',
+      icon: BrainCircuit,
+      badge: 'Phase 6',
+      badgeColor: 'bg-[#fca311]/15 text-[#fca311] border-[#fca311]/40',
+      description: 'Model inference & drift sandbox',
     },
   ];
 

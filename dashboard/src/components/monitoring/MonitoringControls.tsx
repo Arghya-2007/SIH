@@ -10,6 +10,8 @@ import {
   RotateCcw,
   Check,
   Sparkles,
+  BrainCircuit,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface MonitoringControlsProps {
@@ -119,6 +121,17 @@ export function MonitoringControls({
           >
             <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-[#fca311]" />
             Gaps
+          </button>
+          <button
+            onClick={() => onStatusFilterChange('ml_subsidence')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              statusFilter === 'ml_subsidence'
+                ? 'bg-red-500/25 text-red-800 dark:text-red-200 border border-red-500/60 shadow-sm'
+                : 'text-[#5c677d] dark:text-[#94a3b8] hover:text-[#000000] dark:hover:text-white'
+            }`}
+          >
+            <BrainCircuit className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+            ML Risk
           </button>
         </div>
 

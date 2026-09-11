@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/commo
 import { OnEvent, EventEmitter2 } from '@nestjs/event-emitter';
 import type { ValidatedSensorReading } from '../ingestion/sensor-reading.interface.js';
 import type { ValidatedNodeStatus, NodeStatusState } from '../ingestion/node-status.interface.js';
+import { MlInferenceService } from '../ml/ml-inference.service.js';
 
 @Injectable()
 export class ProcessingService implements OnModuleInit, OnModuleDestroy {
@@ -19,7 +20,10 @@ export class ProcessingService implements OnModuleInit, OnModuleDestroy {
   private watchdogInterval: NodeJS.Timeout | null = null;
   private readonly STALE_TIMEOUT_MS = 8_000; // 8 seconds without data = offline
 
-  constructor(private readonly eventEmitter: EventEmitter2) { }
+  constructor(
+    private readonly eventEmitter: EventEmitter2,
+    private readonly mlInference: MlInferenceService,
+  ) { }
 
   onModuleInit(): void {
     // Check every 2 seconds for nodes that have stopped transmitting
@@ -45,6 +49,7 @@ export class ProcessingService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(
             `[processing] Node ${nodeId} timed out (no data for ${Math.round((now - lastSeen) / 1000)}s) -> marked offline`,
           );
+          this.mlInference.onNodeOffline(nodeId);
           this.eventEmitter.emit('node.status.changed', nodeStatus);
         }
       }
@@ -140,6 +145,9 @@ export class ProcessingService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.logger.log(`[processing] Processed new reading: node=${nodeId} seq=${sequenceNumber}`);
+
+    // Pass to ML window buffer for shadow inference
+    this.mlInference.handleSensorReading(reading);
 
     // Pass further downstream (to storage, realtime, etc.)
     this.eventEmitter.emit('sensor.reading.deduped', reading);

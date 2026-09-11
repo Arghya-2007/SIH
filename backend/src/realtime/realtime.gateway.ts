@@ -5,6 +5,7 @@ import { RealtimeService } from './realtime.service.js';
 import { OnEvent } from '@nestjs/event-emitter';
 import type { ValidatedSensorReading } from '../ingestion/sensor-reading.interface.js';
 import type { NodeStatusState } from '../ingestion/node-status.interface.js';
+import type { ShadowMlPrediction } from '../ml/ml.interface.js';
 import { Subject, bufferTime, filter } from 'rxjs';
 import {
   encodeSensorReadingBatch,
@@ -96,6 +97,19 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     
     // Add to buffer
     this.updateSubject.next(reading);
+  }
+
+  @OnEvent('ml.prediction.generated')
+  handleMlPrediction(prediction: ShadowMlPrediction) {
+    // 1. Update internal shadow snapshot
+    this.realtimeService.updateShadowPrediction(prediction);
+
+    // 2. Broadcast on dedicated shadow prediction channel — to zone room and global dashboard
+    this.server?.to(`zone:${prediction.zoneId}`).emit('ml:prediction', prediction);
+    this.server?.emit('ml:prediction', prediction);
+    this.logger.debug(
+      `[RealtimeGateway] Broadcasted ML prediction for node=${prediction.nodeId} class=${prediction.anomaly_class} latency=${prediction.inferenceLatencyMs}ms (Shadow Mode)`,
+    );
   }
 
   private flushUpdates(updates: ValidatedSensorReading[]) {

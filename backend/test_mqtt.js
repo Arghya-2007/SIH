@@ -124,7 +124,18 @@ client.on('connect', () => {
         publishReading(currentSeq, 'gas', gasVal, 'ppm');
         publishReading(currentSeq, 'water', waterVal, 'cm');
         publishReading(currentSeq, 'crack', crackVal, 'state');
-      }, 2000);
+
+        // ML 9-channel feature representations
+        publishReading(currentSeq, 'tilt_x_deg', tiltVal, 'deg');
+        publishReading(currentSeq, 'tilt_y_deg', Number((tiltVal * 0.2).toFixed(2)), 'deg');
+        publishReading(currentSeq, 'vibration_amplitude_g', Number((vibeVal * 0.01).toFixed(4)), 'g');
+        publishReading(currentSeq, 'vibration_freq_hz', 5.4, 'Hz');
+        publishReading(currentSeq, 'crack_displacement_mm', dispVal, 'mm');
+        publishReading(currentSeq, 'water_level_cm', waterVal, 'cm');
+        publishReading(currentSeq, 'gas_ppm', gasVal, 'ppm');
+        publishReading(currentSeq, 'temperature_c', 26.2, '°C');
+        publishReading(currentSeq, 'humidity_pct', 72.5, '%');
+      }, 1500);
     }, 4500);
   }
 });

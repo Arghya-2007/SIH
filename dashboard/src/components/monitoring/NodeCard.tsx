@@ -1,17 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NodeStatusState } from '@/types/node';
 import { ValidatedSensorReading } from '@/types/sensor';
+import { ShadowMlPrediction } from '@/types/ml';
 import { SensorGauge } from './SensorGauge';
 import { Badge } from '../common/Badge';
 import { Card } from '../common/Card';
+import { MlPredictionInspectorModal } from '../common/MlPredictionInspectorModal';
 import { formatRelativeTime } from '@/lib/utils';
-import { Cpu, AlertTriangle, WifiOff, Clock } from 'lucide-react';
+import { Cpu, AlertTriangle, WifiOff, Clock, Brain, Zap, ExternalLink } from 'lucide-react';
 
 interface NodeCardProps {
   nodeId: string;
   zoneId: string;
   status?: NodeStatusState;
   sensors: Record<string, ValidatedSensorReading>;
+  mlPrediction?: ShadowMlPrediction;
 }
 
 export const NodeCard = React.memo(function NodeCard({
@@ -19,7 +22,9 @@ export const NodeCard = React.memo(function NodeCard({
   zoneId,
   status,
   sensors,
+  mlPrediction,
 }: NodeCardProps) {
+  const [showInspector, setShowInspector] = useState(false);
   const isOnline = status?.status === 'online';
   const isStale = status?.status === 'stale';
   const hasGaps = (status?.gapCount || 0) > 0;
@@ -102,6 +107,131 @@ export const NodeCard = React.memo(function NodeCard({
           </div>
         ) : null}
       </div>
+
+      {/* ML Prediction (Shadow Mode) — Strict Isolation from Raw Sensors */}
+      {isOnline && (
+        <div className="mt-3 p-2.5 rounded-xl border border-purple-500/25 dark:border-purple-500/35 bg-purple-500/5 dark:bg-purple-950/25 shadow-sm">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Brain className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <span className="text-[11px] font-bold tracking-wide text-purple-950 dark:text-purple-200 font-mono">
+                ML Assessment
+              </span>
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-purple-500/15 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-bold tracking-wider">
+                SHADOW
+              </span>
+            </div>
+
+            {mlPrediction && (
+              <span className="text-[10px] font-mono text-[#5c677d] dark:text-[#94a3b8] flex items-center gap-1">
+                <Zap className="w-3 h-3 text-[#fca311]" />
+                {mlPrediction.inferenceLatencyMs}ms
+              </span>
+            )}
+          </div>
+
+          {mlPrediction ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-[#000000] dark:text-white capitalize flex items-center gap-1.5">
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full ${
+                      mlPrediction.anomaly_class === 'subsidence_risk'
+                        ? 'bg-red-500 animate-pulse'
+                        : mlPrediction.anomaly_class === 'equipment_noise'
+                        ? 'bg-amber-500'
+                        : 'bg-emerald-500'
+                    }`}
+                  />
+                  <span>
+                    {mlPrediction.anomaly_class.replace(/_/g, ' ')}{' '}
+                    <strong className="text-[10px] opacity-80">
+                      ({Math.round((mlPrediction.class_probs?.[mlPrediction.anomaly_class] || 0) * 100)}%)
+                    </strong>
+                  </span>
+                </span>
+                <span
+                  className={`text-[10px] font-mono font-black px-2 py-0.5 rounded border ${
+                    mlPrediction.alert_level === 'RED'
+                      ? 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/40'
+                      : mlPrediction.alert_level === 'ORANGE'
+                      ? 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/40'
+                      : mlPrediction.alert_level === 'YELLOW'
+                      ? 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/40'
+                      : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/40'
+                  }`}
+                >
+                  {mlPrediction.alert_level}
+                </span>
+              </div>
+
+              {/* Severity Bar */}
+              <div>
+                <div className="flex justify-between text-[10px] text-[#5c677d] dark:text-[#94a3b8] font-mono mb-0.5">
+                  <span>Estimated Severity:</span>
+                  <span className="font-bold text-[#14213d] dark:text-[#e5e5e5]">
+                    {(mlPrediction.severity * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="w-full bg-black/10 dark:bg-white/10 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      mlPrediction.severity > 0.6
+                        ? 'bg-red-500'
+                        : mlPrediction.severity > 0.2
+                        ? 'bg-amber-500'
+                        : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${Math.min(100, Math.max(5, mlPrediction.severity * 100))}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Multi-channel Probabilities Micro-Grid */}
+              <div className="grid grid-cols-3 gap-1 pt-1.5 border-t border-purple-500/15 text-[9px] font-mono text-center">
+                <div className="p-0.5 rounded bg-black/5 dark:bg-white/5">
+                  <span className="text-[#5c677d] dark:text-[#94a3b8]">Norm</span>{' '}
+                  <span className="font-bold">{Math.round((mlPrediction.class_probs?.normal || 0) * 100)}%</span>
+                </div>
+                <div className="p-0.5 rounded bg-black/5 dark:bg-white/5">
+                  <span className="text-[#5c677d] dark:text-[#94a3b8]">Noise</span>{' '}
+                  <span className="font-bold">{Math.round((mlPrediction.class_probs?.equipment_noise || 0) * 100)}%</span>
+                </div>
+                <div className="p-0.5 rounded bg-black/5 dark:bg-white/5">
+                  <span className="text-red-600 dark:text-red-400 font-bold">Risk</span>{' '}
+                  <span className="font-bold text-red-600 dark:text-red-400">{Math.round((mlPrediction.class_probs?.subsidence_risk || 0) * 100)}%</span>
+                </div>
+              </div>
+
+              <div className="pt-0.5 flex items-center justify-between text-[9px] text-[#5c677d] dark:text-[#94a3b8] font-mono">
+                <button
+                  onClick={() => setShowInspector(true)}
+                  className="text-purple-600 dark:text-purple-400 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <ExternalLink className="w-2.5 h-2.5" />
+                  Inspect Window
+                </button>
+                <span className="text-[8.5px] italic text-purple-700 dark:text-purple-300 font-sans">
+                  Shadow Mode • Informational
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="py-2 text-center text-[10px] text-[#5c677d] dark:text-[#94a3b8] italic">
+              Buffering window (awaiting 32 readings)...
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Reusable ML Prediction Inspector Modal */}
+      {mlPrediction && (
+        <MlPredictionInspectorModal
+          prediction={mlPrediction}
+          isOpen={showInspector}
+          onClose={() => setShowInspector(false)}
+        />
+      )}
 
       {/* Node Footer: Health, Sequence, Last Seen */}
       <div className="mt-3.5 pt-2.5 border-t border-[#e5e5e5] dark:border-[#14213d]/80 flex items-center justify-between text-[11px] text-[#5c677d] dark:text-[#94a3b8] font-mono">

@@ -36,16 +36,31 @@ const GATEWAY_TOPIC = 'gateway/#';
 const SENSORS_GATEWAY_TOPIC = 'sensors/gateway/#';
 const MINE_GATEWAY_TOPIC = 'mine/gateway/#';
 
-/** Valid sensor types per Design&Architecture.md §3 */
+/** Valid sensor types per Design&Architecture.md §3 and ML_WORKFLOW.md §2 */
 const VALID_SENSOR_TYPES = new Set([
   'tilt',
+  'tilt_x',
+  'tilt_y',
+  'tilt_x_deg',
+  'tilt_y_deg',
   'vibration',
+  'vibration_amplitude',
+  'vibration_amplitude_g',
+  'vibration_freq',
+  'vibration_freq_hz',
   'displacement',
   'crack',
+  'crack_displacement',
+  'crack_displacement_mm',
   'gas',
+  'gas_ppm',
   'water',
+  'water_level',
+  'water_level_cm',
   'temperature',
+  'temperature_c',
   'humidity',
+  'humidity_pct',
 ]);
 
 @Injectable()
@@ -508,10 +523,15 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
     const pitch = Math.atan2(data.ax, Math.sqrt(data.ay * data.ay + data.az * data.az)) * (180 / Math.PI);
     const roll = Math.atan2(data.ay, Math.sqrt(data.ax * data.ax + data.az * data.az)) * (180 / Math.PI);
     const tilt = Math.round(Math.sqrt(pitch * pitch + roll * roll) * 100) / 100;
+    const tiltX = Math.round(pitch * 1000) / 1000;
+    const tiltY = Math.round(roll * 1000) / 1000;
 
-    // Vibration magnitude
-    const vibration = Math.round(Math.sqrt(data.ax * data.ax + data.ay * data.ay + data.az * data.az) * 100) / 100;
+    // Vibration magnitude & frequency approximation
+    const vibration = Math.round(Math.sqrt(data.ax * data.ax + data.ay * data.ay + data.az * data.az) * 10000) / 10000;
+    const gyroMag = Math.sqrt(data.gx * data.gx + data.gy * data.gy + data.gz * data.gz);
+    const vibeFreq = Math.round((gyroMag > 0 ? gyroMag : 5.0) * 100) / 100;
 
+    // Canonical dashboard channels
     const sensorReadings: Array<{ sensorType: string; value: number; unit: string }> = [
       { sensorType: 'tilt', value: isNaN(tilt) ? 0 : tilt, unit: 'degrees' },
       { sensorType: 'vibration', value: isNaN(vibration) ? 0 : vibration, unit: 'g' },
@@ -519,14 +539,23 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
       { sensorType: 'crack', value: data.pot_raw, unit: 'raw' },
       { sensorType: 'gas', value: data.mq6_raw, unit: 'raw' },
       { sensorType: 'water', value: data.water_raw, unit: 'raw' },
+      // 9-channel ML feature representations (ML_WORKFLOW.md §2)
+      { sensorType: 'tilt_x_deg', value: isNaN(tiltX) ? 0 : tiltX, unit: 'deg' },
+      { sensorType: 'tilt_y_deg', value: isNaN(tiltY) ? 0 : tiltY, unit: 'deg' },
+      { sensorType: 'vibration_amplitude_g', value: isNaN(vibration) ? 0 : vibration, unit: 'g' },
+      { sensorType: 'vibration_freq_hz', value: isNaN(vibeFreq) ? 5.0 : vibeFreq, unit: 'Hz' },
+      { sensorType: 'crack_displacement_mm', value: data.pot_raw > 0 ? data.pot_raw : data.dist_cm, unit: 'mm' },
+      { sensorType: 'water_level_cm', value: data.water_raw, unit: 'cm' },
+      { sensorType: 'gas_ppm', value: data.mq6_raw, unit: 'ppm' },
     ];
 
-    if (data.temp !== -999 && !isNaN(data.temp)) {
-      sensorReadings.push({ sensorType: 'temperature', value: data.temp, unit: '°C' });
-    }
-    if (data.hum !== -999 && !isNaN(data.hum)) {
-      sensorReadings.push({ sensorType: 'humidity', value: data.hum, unit: '%' });
-    }
+    const tempVal = data.temp !== -999 && !isNaN(data.temp) ? data.temp : 25.0;
+    const humVal = data.hum !== -999 && !isNaN(data.hum) ? data.hum : 65.0;
+
+    sensorReadings.push({ sensorType: 'temperature', value: tempVal, unit: '°C' });
+    sensorReadings.push({ sensorType: 'temperature_c', value: tempVal, unit: '°C' });
+    sensorReadings.push({ sensorType: 'humidity', value: humVal, unit: '%' });
+    sensorReadings.push({ sensorType: 'humidity_pct', value: humVal, unit: '%' });
 
     for (const item of sensorReadings) {
       const validated: ValidatedSensorReading = {

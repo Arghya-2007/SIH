@@ -232,7 +232,7 @@ const char* topic_status = "mine/ZONE_1/NODE_01/status";
                 <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-700 dark:text-emerald-300 flex items-center justify-between">
                   <span className="flex items-center gap-2 font-mono">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                    Simulating 100 Active Nodes (20 nodes each across 5 Groups: ZONE_ALPHA, ZONE_BETA, ZONE_GAMMA, ZONE_DELTA, ZONE_EPSILON) • 10s Delay Buffer
+                    Simulating 6 Coal Mine Mesh Nodes across 2 Deep Seam Zones (ZONE_01_LONGWALL_FACE, ZONE_02_RETURN_AIRWAY) with Live ML Subsidence Precursor &amp; Shearer Noise • 4s Real-Time Cycle
                   </span>
                   <span className="font-mono text-[11px] font-bold">&lt;120ms latency</span>
                 </div>

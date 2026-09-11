@@ -31,6 +31,8 @@ COPY --from=builder --chown=nestjs:nestjs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nestjs /app/dist ./dist
 COPY --from=builder --chown=nestjs:nestjs /app/package.json ./package.json
 
+RUN mkdir -p /app/data && chown -R nestjs:nestjs /app/data
+
 USER nestjs
 
 EXPOSE 3000

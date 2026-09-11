@@ -162,11 +162,18 @@ dmypy.json
 *.npy
 *.npz
 
-# ML Experiment tracking runs
+# ML Experiment tracking runs & runtime logs
 wandb/
 mlruns/
 .mlruns/
 lightning_logs/
+prediction_log.jsonl
+*.jsonl
+
+# Scratch test files & temporary evaluation exports
+scratch*.py
+test_export.csv
+*_export.csv
 
 # ------------------------------------------------------------------------------
 # 7. Broker Persistence, Databases & Docker Volumes
@@ -179,7 +186,8 @@ mosquitto/log/
 postgres_data/
 mosquitto_data/
 mosquitto_log/
-data/
+/data/
+backend/data/
 
 # SQLite & local embedded databases
 *.sqlite

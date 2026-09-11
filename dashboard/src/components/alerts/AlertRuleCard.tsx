@@ -8,7 +8,7 @@ interface AlertRuleCardProps {
   rule: AlertRule;
 }
 
-export function AlertRuleCard({ rule }: AlertRuleCardProps) {
+export const AlertRuleCard = React.memo(function AlertRuleCard({ rule }: AlertRuleCardProps) {
   const isCritical = rule.severity === 'critical';
 
   return (
@@ -58,4 +58,5 @@ export function AlertRuleCard({ rule }: AlertRuleCardProps) {
       </p>
     </Card>
   );
-}
+});
+

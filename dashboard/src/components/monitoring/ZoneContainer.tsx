@@ -25,12 +25,14 @@ import {
 import { Badge } from '../common/Badge';
 import { SENSOR_CONFIGS } from '@/lib/constants';
 import { getSensorSeverity } from '@/lib/utils';
+import { ShadowMlPrediction } from '@/types/ml';
 
 interface ZoneContainerProps {
   zoneId: string;
   nodeIds: string[];
   readings: Record<string, Record<string, ValidatedSensorReading>>;
   statuses: Record<string, NodeStatusState>;
+  mlPredictions?: Record<string, ShadowMlPrediction>;
 }
 
 const SENSOR_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -47,6 +49,7 @@ export function ZoneContainer({
   nodeIds,
   readings,
   statuses,
+  mlPredictions,
 }: ZoneContainerProps) {
   const [isOpen, setIsOpen] = useState(true);
 
@@ -524,6 +527,7 @@ export function ZoneContainer({
                         zoneId={zoneId}
                         status={statuses[nodeId]}
                         sensors={readings[nodeId] || {}}
+                        mlPrediction={mlPredictions?.[nodeId]}
                       />
                     </div>
                   ))}

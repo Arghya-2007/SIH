@@ -3,10 +3,17 @@
 import { useState, useMemo } from 'react';
 import { useRealtime } from './useRealtime';
 
-export type StatusFilterOption = 'all' | 'online' | 'offline' | 'gaps';
+export type StatusFilterOption =
+  | 'all'
+  | 'online'
+  | 'offline'
+  | 'gaps'
+  | 'ml_subsidence'
+  | 'ml_noise'
+  | 'ml_normal';
 
 export function useZoneFilter() {
-  const { readings, nodeStatuses, activeZones: realtimeActiveZones } = useRealtime();
+  const { readings, nodeStatuses, mlPredictions, activeZones: realtimeActiveZones } = useRealtime();
   const [selectedZone, setSelectedZone] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<StatusFilterOption>('all');
@@ -18,11 +25,12 @@ export function useZoneFilter() {
         ...realtimeActiveZones,
         ...Object.keys(readings),
         ...Object.keys(nodeStatuses),
+        ...Object.keys(mlPredictions || {}),
       ])
     )
       .filter(Boolean)
       .sort();
-  }, [realtimeActiveZones, readings, nodeStatuses]);
+  }, [realtimeActiveZones, readings, nodeStatuses, mlPredictions]);
 
   const filteredZones = useMemo(() => {
     const result: Record<string, string[]> = {};
@@ -33,6 +41,7 @@ export function useZoneFilter() {
       const nodesInZone = new Set<string>([
         ...Object.keys(readings[zoneId] || {}),
         ...Object.keys(nodeStatuses[zoneId] || {}),
+        ...Object.keys(mlPredictions?.[zoneId] || {}),
       ]);
 
       const matchingNodes = Array.from(nodesInZone).filter(nodeId => {
@@ -44,14 +53,28 @@ export function useZoneFilter() {
           if (!matchesQuery) return false;
         }
 
-        // Status filter
+        // Status & ML filter
         const status = nodeStatuses[zoneId]?.[nodeId];
         const isOnline = status?.status === 'online';
         const hasGaps = (status?.gapCount || 0) > 0;
+        const ml = mlPredictions?.[zoneId]?.[nodeId];
 
         if (statusFilter === 'online' && !isOnline) return false;
         if (statusFilter === 'offline' && isOnline) return false;
         if (statusFilter === 'gaps' && !hasGaps) return false;
+        if (statusFilter === 'ml_subsidence') {
+          const isSubsidence =
+            ml?.anomaly_class === 'subsidence_risk' ||
+            ml?.alert_level === 'RED' ||
+            ml?.alert_level === 'ORANGE';
+          if (!isSubsidence) return false;
+        }
+        if (statusFilter === 'ml_noise') {
+          if (ml?.anomaly_class !== 'equipment_noise') return false;
+        }
+        if (statusFilter === 'ml_normal') {
+          if (ml?.anomaly_class !== 'normal') return false;
+        }
 
         return true;
       });
@@ -62,7 +85,7 @@ export function useZoneFilter() {
     });
 
     return result;
-  }, [readings, nodeStatuses, allKnownZones, selectedZone, searchQuery, statusFilter]);
+  }, [readings, nodeStatuses, mlPredictions, allKnownZones, selectedZone, searchQuery, statusFilter]);
 
   return {
     selectedZone,

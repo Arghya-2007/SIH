@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { ValidatedSensorReading } from '../ingestion/sensor-reading.interface.js';
 import type { NodeStatusState } from '../ingestion/node-status.interface.js';
+import type { ShadowMlPrediction } from '../ml/ml.interface.js';
 
 export interface GatewayStatusState {
   brokerConnected: boolean;
@@ -20,6 +21,9 @@ export class RealtimeService {
   
   // zoneId -> (nodeId -> nodeStatus)
   private readonly statusSnapshot = new Map<string, Map<string, NodeStatusState>>();
+
+  // zoneId -> (nodeId -> ShadowMlPrediction) - STRICTLY SEPARATE from sensor telemetry
+  private readonly shadowPredictions = new Map<string, Map<string, ShadowMlPrediction>>();
 
   private currentGatewayStatus: GatewayStatusState = {
     brokerConnected: false,
@@ -61,7 +65,7 @@ export class RealtimeService {
     const zoneMap = this.statusSnapshot.get(zoneId)!;
     zoneMap.set(nodeId, status);
 
-    // Clear all old sensor data when the node gets offline
+    // Clear all old sensor data and shadow predictions when the node gets offline
     if (status.status === 'offline') {
       const readingsMap = this.snapshot.get(zoneId);
       if (readingsMap) {
@@ -71,16 +75,31 @@ export class RealtimeService {
           }
         }
       }
+      this.shadowPredictions.get(zoneId)?.delete(nodeId);
     }
   }
 
-  getSnapshotForZone(zoneId: string): { readings: ValidatedSensorReading[], statuses: NodeStatusState[] } {
+  updateShadowPrediction(prediction: ShadowMlPrediction) {
+    const { zoneId, nodeId } = prediction;
+    if (!this.shadowPredictions.has(zoneId)) {
+      this.shadowPredictions.set(zoneId, new Map());
+    }
+    this.shadowPredictions.get(zoneId)!.set(nodeId, prediction);
+  }
+
+  getSnapshotForZone(zoneId: string): {
+    readings: ValidatedSensorReading[];
+    statuses: NodeStatusState[];
+    mlPredictions: ShadowMlPrediction[];
+  } {
     const readingsMap = this.snapshot.get(zoneId);
     const statusesMap = this.statusSnapshot.get(zoneId);
-    
+    const predictionsMap = this.shadowPredictions.get(zoneId);
+
     return {
       readings: readingsMap ? Array.from(readingsMap.values()) : [],
       statuses: statusesMap ? Array.from(statusesMap.values()) : [],
+      mlPredictions: predictionsMap ? Array.from(predictionsMap.values()) : [],
     };
   }
 
@@ -88,6 +107,7 @@ export class RealtimeService {
     const zones = new Set<string>([
       ...this.snapshot.keys(),
       ...this.statusSnapshot.keys(),
+      ...this.shadowPredictions.keys(),
     ]);
     return Array.from(zones);
   }
