@@ -1,4 +1,3 @@
-# Note: Build context should be ML-Server/ directory (e.g. docker build -f inference-service/Dockerfile .)
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -12,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY inference-service/requirements.txt ./inference-service/
 RUN pip install --no-cache-dir -r inference-service/requirements.txt
 
-# Copy application code
+# Copy application code (models architecture and inference service)
 COPY models/ ./models/
 COPY inference-service/ ./inference-service/
 

@@ -66,6 +66,43 @@ services:
     networks:
       - sih-network
 
+  ml-server:
+    build:
+      context: ./ML-Server
+      dockerfile: Dockerfile
+    container_name: sih-ml-server
+    restart: unless-stopped
+    ports:
+      - "${ML_PORT:-8000}:8000"
+    environment:
+      - ML_MODEL_CHECKPOINT=${ML_MODEL_CHECKPOINT:-baseline_latest.pt}
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./ML-Server/inference-service/model_registry:/app/inference-service/model_registry
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -f http://localhost:8000/health || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - sih-network
+
   backend:
     build:
       context: ./backend
@@ -85,7 +122,7 @@ services:
       - DATABASE_USER=${POSTGRES_USER:-sih_user}
       - DATABASE_PASSWORD=${POSTGRES_PASSWORD:-sih_password}
       - DATABASE_NAME=${POSTGRES_DB:-sih_subsidence_db}
-      - ML_INFERENCE_URL=http://host.docker.internal:8000/predict
+      - ML_INFERENCE_URL=${ML_INFERENCE_URL:-http://ml-server:8000/predict}
       - ML_LOG_STORE_PATH=/app/data/predictions.db
     volumes:
       - ./backend/data:/app/data
@@ -96,6 +133,8 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+      ml-server:
+        condition: service_started
     deploy:
       resources:
         limits:
