@@ -27,6 +27,7 @@ export interface GatewayStatusPayload {
   gatewayType: string;
   topic: string;
   nodeId?: string;
+  activeNodes?: string[];
 }
 
 /** Topic subscriptions for sensors, LoRa packets, and gateway status/LWT */
@@ -61,6 +62,9 @@ const VALID_SENSOR_TYPES = new Set([
   'temperature_c',
   'humidity',
   'humidity_pct',
+  'rssi',
+  'snr',
+  'miner_proximity',
 ]);
 
 @Injectable()
@@ -73,8 +77,20 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
   private isGatewayExplicitlyOffline = false;
   private lastLoraPacketAt: string | null = null;
   private totalLoraPackets = 0;
-  private activeLoraNodeId = 'NODE_01';
+  private readonly activeLoraNodes = new Set<string>();
   private gatewayWatchdogTimer: NodeJS.Timeout | null = null;
+  private readonly lastKnownReadings = new Map<
+    string,
+    {
+      temp?: number;
+      hum?: number;
+      tilt?: number;
+      tiltX?: number;
+      tiltY?: number;
+      vibration?: number;
+      dist_cm?: number;
+    }
+  >();
 
   constructor(
     private readonly config: ConfigService,
@@ -89,7 +105,7 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
     const isPacketRecent =
       !this.isGatewayExplicitlyOffline &&
       elapsed !== null &&
-      elapsed < 10_000;
+      elapsed < 30_000;
 
     // A gateway is connected if Mosquitto reports connected clients > 1 (e.g. ESP32 connected to broker)
     // OR if recent LoRa packets were received
@@ -111,6 +127,7 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
       status = 'standby';
     }
 
+    const activeList = Array.from(this.activeLoraNodes);
     return {
       brokerConnected: this.isBrokerConnected,
       loraGatewayConnected: isConnected,
@@ -119,7 +136,8 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
       totalLoraPackets: this.totalLoraPackets,
       gatewayType: 'ESP32 LoRa Gateway (SX1276)',
       topic: 'sensors/lora/#',
-      nodeId: this.activeLoraNodeId,
+      nodeId: activeList.join(', ') || 'NODE_01',
+      activeNodes: activeList,
     };
   }
 
@@ -133,7 +151,9 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
     this.isGatewayExplicitlyOffline = false;
     this.lastLoraPacketAt = new Date().toISOString();
     this.totalLoraPackets++;
-    this.activeLoraNodeId = nodeId;
+    if (nodeId) {
+      this.activeLoraNodes.add(nodeId);
+    }
     this.emitGatewayStatus();
   }
 
@@ -196,11 +216,11 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
       if (current.status !== lastKnownStatus) {
         if (lastKnownStatus === 'online' && current.status === 'offline') {
           this.logger.warn(
-            `[ingestion] LoRa Gateway timed out (>5s without packet) -> marked OFFLINE`,
+            `[ingestion] LoRa Gateway timed out (>30s without packet) -> marked OFFLINE`,
           );
-          if (this.activeLoraNodeId) {
+          for (const nId of this.activeLoraNodes) {
             this.eventEmitter.emit('node.status.received', {
-              nodeId: this.activeLoraNodeId,
+              nodeId: nId,
               zoneId: 'zone-A',
               status: 'offline',
               receivedAt: new Date().toISOString(),
@@ -314,9 +334,9 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
         );
         this.isGatewayExplicitlyOffline = true;
         this.emitGatewayStatus();
-        if (this.activeLoraNodeId) {
+        for (const nId of this.activeLoraNodes) {
           this.eventEmitter.emit('node.status.received', {
-            nodeId: this.activeLoraNodeId,
+            nodeId: nId,
             zoneId: 'zone-A',
             status: 'offline',
             receivedAt: new Date().toISOString(),
@@ -328,14 +348,15 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
       if (isOnline) {
         this.logger.log(`[ingestion] Gateway online received on topic "${topic}"`);
         this.isGatewayExplicitlyOffline = false;
-        this.recordLoraGatewayActivity(this.activeLoraNodeId);
+        const firstNode = Array.from(this.activeLoraNodes)[0] || 'NODE_01';
+        this.recordLoraGatewayActivity(firstNode);
         return;
       }
     }
 
     // --- 1. Handle LoRa Hardware Topics (sensors/lora/...) ---
     if (topic.startsWith('sensors/lora')) {
-      if (payload.length === 54) {
+      if (payload.length >= 54) {
         this.handleLoraBinary(payload);
         return;
       }
@@ -411,25 +432,109 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Decodes 54-byte packed SensorData struct sent by ESP32 LoRa Gateway
+   * Decodes packed SensorData struct sent by ESP32 LoRa Gateway.
+   * Supports:
+   * - 54-byte wire format (char[8] nodeId, uint32 seq, 9x float, 3x int16_t ADC)
+   * - 60-byte wire format:
+   *     - 3x int32_t ADC (48..59) OR
+   *     - 3x int16_t ADC (48..53) + RSSI (int16_t) & SNR (float) (54..59)
+   * - Any future extended binary struct (>= 54 bytes)
    */
   private handleLoraBinary(payload: Buffer): void {
-    const nodeId = payload.subarray(0, 8).toString('utf8').replace(/\0.*$/, '').trim() || 'NODE_01';
-    const packetSeq = payload.readUInt32LE(8);
-    const temp = Math.round(payload.readFloatLE(12) * 10) / 10;
-    const hum = Math.round(payload.readFloatLE(16) * 10) / 10;
-    const ax = payload.readFloatLE(20);
-    const ay = payload.readFloatLE(24);
-    const az = payload.readFloatLE(28);
-    const gx = payload.readFloatLE(32);
-    const gy = payload.readFloatLE(36);
-    const gz = payload.readFloatLE(40);
-    const dist_cm = Math.round(payload.readFloatLE(44) * 10) / 10;
-    const mq6_raw = payload.readInt16LE(48);
-    const water_raw = payload.readInt16LE(50);
-    const pot_raw = payload.readInt16LE(52);
+    if (payload.length < 54) {
+      this.logger.warn(`[ingestion] LoRa binary payload too short: ${payload.length} bytes (expected >= 54)`);
+      return;
+    }
+
+    this.logger.log(`[ingestion] LoRa raw binary (${payload.length}B): ${payload.toString('hex')}`);
+
+    const rawNodeId = payload
+      .subarray(0, 8)
+      .toString('utf8')
+      .replace(/\0.*$/, '')
+      .replace(/[^A-Za-z0-9_\-\.]/g, '')
+      .trim();
+
+    if (!rawNodeId || rawNodeId.length < 2 || rawNodeId.length > 16) {
+      this.logger.warn(`[ingestion] Dropping corrupted LoRa packet: invalid nodeId "${rawNodeId}"`);
+      return;
+    }
+    const nodeId = rawNodeId;
+    let packetSeq = payload.readUInt32LE(8);
+
+    // Support both 32-bit uint32_t and 16-bit uint16_t sequence counters
+    if (packetSeq > 50000000) {
+      const seq16 = payload.readUInt16LE(8);
+      if (seq16 > 0) {
+        packetSeq = seq16;
+      }
+    }
+
+    // Read floats with defensive sanitization so hardware nodes with noisy or unpopulated sensor pins do not get dropped
+    const rawTemp = payload.readFloatLE(12);
+    const rawHum = payload.readFloatLE(16);
+    const rawAx = payload.readFloatLE(20);
+    const rawAy = payload.readFloatLE(24);
+    const rawAz = payload.readFloatLE(28);
+    const rawGx = payload.readFloatLE(32);
+    const rawGy = payload.readFloatLE(36);
+    const rawGz = payload.readFloatLE(40);
+    const rawDist = payload.readFloatLE(44);
+
+    const temp = (!isNaN(rawTemp) && rawTemp >= -40 && rawTemp <= 125) ? Math.round(rawTemp * 10) / 10 : 25.0;
+    const hum = (!isNaN(rawHum) && rawHum >= 0 && rawHum <= 100) ? Math.round(rawHum * 10) / 10 : 65.0;
+    const ax = (!isNaN(rawAx) && Math.abs(rawAx) <= 16) ? rawAx : 0;
+    const ay = (!isNaN(rawAy) && Math.abs(rawAy) <= 16) ? rawAy : 0;
+    const az = (!isNaN(rawAz) && Math.abs(rawAz) <= 16) ? rawAz : 1.0;
+    const gx = (!isNaN(rawGx) && Math.abs(rawGx) <= 500) ? rawGx : 0;
+    const gy = (!isNaN(rawGy) && Math.abs(rawGy) <= 500) ? rawGy : 0;
+    const gz = (!isNaN(rawGz) && Math.abs(rawGz) <= 500) ? rawGz : 0;
+    const dist_cm = (!isNaN(rawDist) && rawDist >= 0 && rawDist <= 2000) ? Math.round(rawDist * 10) / 10 : 0;
+
+    // 16-bit ADC values matching ESP32 SensorData packed struct (clamped to 12-bit ADC range 0..4095)
+    const mq6_raw = Math.max(0, Math.min(4095, payload.readInt16LE(48)));
+    const water_raw = Math.max(0, Math.min(4095, payload.readInt16LE(50)));
+    const pot_raw = Math.max(0, Math.min(4095, payload.readInt16LE(52)));
+
+    let rssi: number | undefined;
+    let snr: number | undefined;
+    let espnow_mac: string | null = null;
+
+    if (payload.length >= 60) {
+      // 1. Check if bytes 54..59 contain explicit RSSI (signed int16) + SNR (float) metadata
+      const possibleRssi = payload.readInt16LE(54);
+      const possibleSnr = payload.readFloatLE(56);
+      const isRssiSnr =
+        possibleRssi < 0 &&
+        possibleRssi >= -150 &&
+        !isNaN(possibleSnr) &&
+        possibleSnr >= -35 &&
+        possibleSnr <= 35;
+
+      if (isRssiSnr) {
+        rssi = possibleRssi;
+        snr = Math.round(possibleSnr * 10) / 10;
+      } else {
+        // 2. Exact 60-byte SensorData struct from physical ESP32 (contains 6-byte espnow_mac at offset 54..59)
+        const macBytes = Array.from(payload.subarray(54, 60));
+        const hasMac = macBytes.some((b) => b !== 0);
+        if (hasMac) {
+          espnow_mac = macBytes.map((b) => b.toString(16).padStart(2, '0').toUpperCase()).join(':');
+        }
+      }
+
+      // 3. Extended gateway frame (>= 66 bytes) where RSSI and SNR are appended at offset 60+
+      if (payload.length >= 66) {
+        rssi = payload.readInt16LE(60);
+        snr = Math.round(payload.readFloatLE(62) * 10) / 10;
+      }
+    }
 
     this.recordLoraGatewayActivity(nodeId);
+
+    this.logger.log(
+      `[ingestion] LoRa packet processed (${payload.length}B): node=${nodeId} seq=${packetSeq} temp=${temp}°C hum=${hum}% dist=${dist_cm}cm mq6=${mq6_raw} water=${water_raw} pot=${pot_raw}${espnow_mac ? ` espnow_mac=${espnow_mac}` : ''}${rssi !== undefined ? ` rssi=${rssi}dBm snr=${snr}dB` : ''}`,
+    );
 
     this.dispatchHardwareReadings(nodeId, packetSeq, {
       temp,
@@ -444,6 +549,9 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
       mq6_raw,
       water_raw,
       pot_raw,
+      rssi,
+      snr,
+      espnow_mac,
     });
   }
 
@@ -456,17 +564,25 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(`[ingestion] LoRa JSON specified offline: ${JSON.stringify(data)}`);
         this.isGatewayExplicitlyOffline = true;
         this.emitGatewayStatus();
-        const nodeId = String(data.id || data.nodeId || this.activeLoraNodeId || 'NODE_01');
-        this.eventEmitter.emit('node.status.received', {
-          nodeId,
-          zoneId: 'zone-A',
-          status: 'offline',
-          receivedAt: new Date().toISOString(),
-        });
+        const specificNodeId = data.NODE_ID || data.node_id || data.nodeId || data.id || data.NodeId || data.node;
+        const nodesToOffline = specificNodeId
+          ? [String(specificNodeId)]
+          : Array.from(this.activeLoraNodes);
+        if (nodesToOffline.length === 0) {
+          nodesToOffline.push('NODE_01');
+        }
+        for (const nodeId of nodesToOffline) {
+          this.eventEmitter.emit('node.status.received', {
+            nodeId,
+            zoneId: 'zone-A',
+            status: 'offline',
+            receivedAt: new Date().toISOString(),
+          });
+        }
         return;
       }
 
-      const nodeId = String(data.id || data.nodeId || 'NODE_01');
+      const nodeId = String(data.NODE_ID || data.node_id || data.nodeId || data.id || data.NodeId || data.node || 'NODE_01');
       const packetSeq = Number(data.packetSequence || data.packetSeq || data.sequenceNumber || 1);
       this.recordLoraGatewayActivity(nodeId);
       this.dispatchHardwareReadings(nodeId, packetSeq, {
@@ -504,6 +620,9 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
       mq6_raw: number;
       water_raw: number;
       pot_raw: number;
+      rssi?: number;
+      snr?: number;
+      espnow_mac?: string | null;
     },
   ): void {
     const now = new Date().toISOString();
@@ -518,24 +637,59 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
     };
     this.eventEmitter.emit('node.status.received', validatedStatus);
 
-    // 2. Compute physical metrics:
-    // Pitch & Roll tilt angles in degrees
-    const pitch = Math.atan2(data.ax, Math.sqrt(data.ay * data.ay + data.az * data.az)) * (180 / Math.PI);
-    const roll = Math.atan2(data.ay, Math.sqrt(data.ax * data.ax + data.az * data.az)) * (180 / Math.PI);
-    const tilt = Math.round(Math.sqrt(pitch * pitch + roll * roll) * 100) / 100;
-    const tiltX = Math.round(pitch * 1000) / 1000;
-    const tiltY = Math.round(roll * 1000) / 1000;
+    let lastKnown = this.lastKnownReadings.get(nodeId);
+    if (!lastKnown) {
+      lastKnown = {};
+      this.lastKnownReadings.set(nodeId, lastKnown);
+    }
 
-    // Vibration magnitude & frequency approximation
-    const vibration = Math.round(Math.sqrt(data.ax * data.ax + data.ay * data.ay + data.az * data.az) * 10000) / 10000;
+    // 2. Compute physical metrics with MEMS I2C fault tolerance
+    // In physics at rest, acceleration magnitude is 1.0g (gravity).
+    // If ax=0, ay=0, az=0, MPU9250 I2C read timed out or failed.
+    const accelMag = Math.sqrt(data.ax * data.ax + data.ay * data.ay + data.az * data.az);
+    let pitch: number;
+    let roll: number;
+    let tilt: number;
+    let tiltX: number;
+    let tiltY: number;
+    let vibration: number;
+
+    if (accelMag >= 0.2 && accelMag <= 5.0) {
+      pitch = Math.atan2(data.ax, Math.sqrt(data.ay * data.ay + data.az * data.az)) * (180 / Math.PI);
+      roll = Math.atan2(data.ay, Math.sqrt(data.ax * data.ax + data.az * data.az)) * (180 / Math.PI);
+      tilt = Math.round(Math.sqrt(pitch * pitch + roll * roll) * 100) / 100;
+      tiltX = Math.round(pitch * 1000) / 1000;
+      tiltY = Math.round(roll * 1000) / 1000;
+      vibration = Math.round(accelMag * 10000) / 10000;
+
+      lastKnown.tilt = tilt;
+      lastKnown.tiltX = tiltX;
+      lastKnown.tiltY = tiltY;
+      lastKnown.vibration = vibration;
+    } else {
+      // Hold steady-state orientation rather than computing an artificial 90° spike
+      tilt = lastKnown.tilt ?? 0;
+      tiltX = lastKnown.tiltX ?? 0;
+      tiltY = lastKnown.tiltY ?? 0;
+      vibration = lastKnown.vibration ?? 1.0;
+    }
+
     const gyroMag = Math.sqrt(data.gx * data.gx + data.gy * data.gy + data.gz * data.gz);
     const vibeFreq = Math.round((gyroMag > 0 ? gyroMag : 5.0) * 100) / 100;
+
+    // Distance validation
+    let distVal = data.dist_cm;
+    if (distVal > 0 && distVal <= 400) {
+      lastKnown.dist_cm = distVal;
+    } else if (lastKnown.dist_cm !== undefined) {
+      distVal = lastKnown.dist_cm;
+    }
 
     // Canonical dashboard channels
     const sensorReadings: Array<{ sensorType: string; value: number; unit: string }> = [
       { sensorType: 'tilt', value: isNaN(tilt) ? 0 : tilt, unit: 'degrees' },
       { sensorType: 'vibration', value: isNaN(vibration) ? 0 : vibration, unit: 'g' },
-      { sensorType: 'displacement', value: data.dist_cm, unit: 'cm' },
+      { sensorType: 'displacement', value: distVal, unit: 'cm' },
       { sensorType: 'crack', value: data.pot_raw, unit: 'raw' },
       { sensorType: 'gas', value: data.mq6_raw, unit: 'raw' },
       { sensorType: 'water', value: data.water_raw, unit: 'raw' },
@@ -544,13 +698,39 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
       { sensorType: 'tilt_y_deg', value: isNaN(tiltY) ? 0 : tiltY, unit: 'deg' },
       { sensorType: 'vibration_amplitude_g', value: isNaN(vibration) ? 0 : vibration, unit: 'g' },
       { sensorType: 'vibration_freq_hz', value: isNaN(vibeFreq) ? 5.0 : vibeFreq, unit: 'Hz' },
-      { sensorType: 'crack_displacement_mm', value: data.pot_raw > 0 ? data.pot_raw : data.dist_cm, unit: 'mm' },
+      { sensorType: 'crack_displacement_mm', value: data.pot_raw > 0 ? data.pot_raw : distVal, unit: 'mm' },
       { sensorType: 'water_level_cm', value: data.water_raw, unit: 'cm' },
       { sensorType: 'gas_ppm', value: data.mq6_raw, unit: 'ppm' },
     ];
 
-    const tempVal = data.temp !== -999 && !isNaN(data.temp) ? data.temp : 25.0;
-    const humVal = data.hum !== -999 && !isNaN(data.hum) ? data.hum : 65.0;
+    if (data.espnow_mac) {
+      sensorReadings.push({ sensorType: 'miner_proximity', value: 1, unit: 'beacon' });
+      this.logger.warn(`[ingestion] Miner Safety Alert: ESP-NOW device detected near node=${nodeId} (MAC: ${data.espnow_mac})`);
+    }
+
+    if (data.rssi !== undefined) {
+      sensorReadings.push({ sensorType: 'rssi', value: data.rssi, unit: 'dBm' });
+    }
+    if (data.snr !== undefined) {
+      sensorReadings.push({ sensorType: 'snr', value: data.snr, unit: 'dB' });
+    }
+
+    // Temperature & Humidity validation (hold steady state if DHT22 read dropped or timed out)
+    let tempVal: number;
+    if (data.temp !== -999 && !isNaN(data.temp) && data.temp >= -20 && data.temp <= 80) {
+      tempVal = data.temp;
+      lastKnown.temp = tempVal;
+    } else {
+      tempVal = lastKnown.temp ?? 25.0;
+    }
+
+    let humVal: number;
+    if (data.hum !== -999 && !isNaN(data.hum) && data.hum >= 1 && data.hum <= 100) {
+      humVal = data.hum;
+      lastKnown.hum = humVal;
+    } else {
+      humVal = lastKnown.hum ?? 65.0;
+    }
 
     sensorReadings.push({ sensorType: 'temperature', value: tempVal, unit: '°C' });
     sensorReadings.push({ sensorType: 'temperature_c', value: tempVal, unit: '°C' });
@@ -581,6 +761,14 @@ export class IngestionService implements OnModuleInit, OnModuleDestroy {
     if (typeof data !== 'object' || data === null) return false;
 
     const obj = data as Record<string, unknown>;
+
+    if (typeof obj['nodeId'] !== 'string') {
+      if (typeof obj['NODE_ID'] === 'string') {
+        obj['nodeId'] = obj['NODE_ID'];
+      } else if (typeof obj['node_id'] === 'string') {
+        obj['nodeId'] = obj['node_id'];
+      }
+    }
 
     return (
       typeof obj['nodeId'] === 'string' &&

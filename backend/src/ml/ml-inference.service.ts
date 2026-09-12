@@ -38,6 +38,8 @@ export class MlInferenceService implements OnModuleDestroy {
   // nodeId -> latest ShadowMlPrediction
   private readonly latestPredictions = new Map<string, ShadowMlPrediction>();
 
+  private readonly allowWarmup: boolean;
+
   constructor(
     private readonly config: ConfigService,
     private readonly windowBuffer: MlWindowBufferService,
@@ -52,6 +54,12 @@ export class MlInferenceService implements OnModuleDestroy {
       this.config.get<string>('ML_INFERENCE_URL') ||
       process.env.ML_INFERENCE_URL ||
       defaultUrl;
+
+    this.allowWarmup =
+      this.config.get<string>('ML_ALLOW_WARMUP') === 'true' ||
+      this.config.get<boolean>('ML_ALLOW_WARMUP') === true ||
+      process.env.ML_ALLOW_WARMUP === 'true';
+
     this.logger.log(`MlInferenceService initialized. Target URL: ${this.inferenceUrl}`);
   }
 
@@ -65,7 +73,7 @@ export class MlInferenceService implements OnModuleDestroy {
    */
   async handleSensorReading(reading: ValidatedSensorReading): Promise<void> {
     try {
-      const windowPayload = this.windowBuffer.addReading(reading);
+      const windowPayload = this.windowBuffer.addReading(reading, this.allowWarmup);
       if (!windowPayload) {
         return;
       }
@@ -236,8 +244,8 @@ export class MlInferenceService implements OnModuleDestroy {
       clearTimeout(pending.timer);
       this.pendingPredictions.delete(nodeId);
     }
-    this.windowBuffer.clearNode(nodeId);
-    this.latestPredictions.delete(nodeId);
+    // Retain windowBuffer and latestPredictions so alternating node intervals
+    // in multi-node setups do not wipe historical feature contexts.
   }
 
   onModuleDestroy(): void {

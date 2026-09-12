@@ -201,13 +201,13 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(ppsInterval);
   }, []);
 
-  // Client-side Gateway Watchdog to detect hardware disconnection promptly (<5s without LoRa packet)
+  // Client-side Gateway Watchdog to detect hardware disconnection (<25s without LoRa packet)
   useEffect(() => {
     const gwWatchdog = setInterval(() => {
       setGatewayStatus(prev => {
         if (!prev.lastLoraPacketAt) return prev;
         const elapsed = Date.now() - new Date(prev.lastLoraPacketAt).getTime();
-        if (elapsed > 5000 && (prev.loraGatewayConnected || prev.status === 'online')) {
+        if (elapsed > 25000 && (prev.loraGatewayConnected || prev.status === 'online')) {
           return {
             ...prev,
             loraGatewayConnected: false,
@@ -966,19 +966,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       setReadings(prev => {
         const next = { ...prev };
 
-        // 1. Purge any existing sensor data for nodes that are offline
-        offlineKeys.forEach(key => {
-          const [zId, nId] = key.split(':');
-          if (next[zId] && next[zId][nId]) {
-            const zMap = { ...next[zId] };
-            delete zMap[nId];
-            next[zId] = zMap;
-          }
-        });
-
-        // 2. Only populate sensor readings for online nodes
+        // Populate latest sensor readings for all reporting nodes in snapshot
         data.readings?.forEach(r => {
-          if (offlineKeys.has(`${r.zoneId}:${r.nodeId}`)) return;
           if (!next[r.zoneId]) next[r.zoneId] = {};
           if (!next[r.zoneId][r.nodeId]) next[r.zoneId][r.nodeId] = {};
           next[r.zoneId][r.nodeId] = {
@@ -1134,37 +1123,8 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         return next;
       });
 
-      // Clear all old sensor data and shadow predictions when a node gets offline
-      const offlineUpdates = updates.filter(st => st.status === 'offline');
-      if (offlineUpdates.length > 0) {
-        setReadings(prev => {
-          let changed = false;
-          const next = { ...prev };
-          offlineUpdates.forEach(st => {
-            if (next[st.zoneId] && next[st.zoneId][st.nodeId]) {
-              const zoneMap = { ...next[st.zoneId] };
-              delete zoneMap[st.nodeId];
-              next[st.zoneId] = zoneMap;
-              changed = true;
-            }
-          });
-          return changed ? next : prev;
-        });
-
-        setMlPredictions(prev => {
-          let changed = false;
-          const next = { ...prev };
-          offlineUpdates.forEach(st => {
-            if (next[st.zoneId] && next[st.zoneId][st.nodeId]) {
-              const zoneMap = { ...next[st.zoneId] };
-              delete zoneMap[st.nodeId];
-              next[st.zoneId] = zoneMap;
-              changed = true;
-            }
-          });
-          return changed ? next : prev;
-        });
-      }
+      // Retain last known sensor data and shadow predictions so dashboard
+      // displays last known state with offline indicator instead of blanking out telemetry.
     }
 
     // High-performance Binary Protobuf Handlers

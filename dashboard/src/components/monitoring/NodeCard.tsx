@@ -86,30 +86,26 @@ export const NodeCard = React.memo(function NodeCard({
           isOnline ? 'opacity-100' : 'opacity-60'
         }`}
       >
-        {isOnline &&
+        {Object.keys(sensors).length > 0 ? (
           Object.entries(sensors).map(([sensorType, reading]) => (
             <SensorGauge key={sensorType} reading={reading} />
-          ))}
-
-        {!isOnline ? (
-          <div className="col-span-full py-8 px-4 text-center rounded-xl border border-dashed border-red-500/20 dark:border-red-900/40 bg-red-500/5 dark:bg-red-950/10 flex flex-col items-center justify-center gap-1.5">
-            <WifiOff className="w-5 h-5 text-red-500/70 dark:text-red-400/70" />
+          ))
+        ) : !isOnline ? (
+          <div className="col-span-full py-6 px-4 text-center rounded-xl border border-dashed border-red-500/20 dark:border-red-900/40 bg-red-500/5 dark:bg-red-950/10 flex flex-col items-center justify-center gap-1">
+            <WifiOff className="w-4 h-4 text-red-500/70 dark:text-red-400/70" />
             <p className="text-xs font-semibold text-red-700 dark:text-red-300">
-              Sensor Telemetry Cleared (Node Offline)
-            </p>
-            <p className="text-[10px] text-[#5c677d] dark:text-[#94a3b8]">
-              All cached sensor data cleared when node went offline.
+              No Readings Received (Node Offline)
             </p>
           </div>
-        ) : Object.keys(sensors).length === 0 ? (
+        ) : (
           <div className="col-span-full py-6 text-center text-xs text-[#5c677d] dark:text-[#94a3b8] italic">
             Waiting for first sensor reading from {nodeId}...
           </div>
-        ) : null}
+        )}
       </div>
 
       {/* ML Prediction (Shadow Mode) — Strict Isolation from Raw Sensors */}
-      {isOnline && (
+      {mlPrediction && (
         <div className="mt-3 p-2.5 rounded-xl border border-purple-500/25 dark:border-purple-500/35 bg-purple-500/5 dark:bg-purple-950/25 shadow-sm">
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="flex items-center gap-1.5 flex-wrap">

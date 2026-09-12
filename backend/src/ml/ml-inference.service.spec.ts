@@ -147,4 +147,31 @@ describe('MlInferenceService', () => {
     // Must have fired exactly 1 inference pass, NOT 11!
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('should trigger inference on early packets when ML_ALLOW_WARMUP is true', async () => {
+    const warmupConfig = new ConfigService({
+      ML_INFERENCE_URL: 'http://127.0.0.1:8000/predict',
+      ML_ALLOW_WARMUP: 'true',
+    });
+    const warmupService = new MlInferenceService(warmupConfig, windowBuffer, eventEmitter);
+
+    const mockResponse = {
+      anomaly_class: 'normal',
+      class_probs: { normal: 0.98, equipment_noise: 0.01, subsidence_risk: 0.01 },
+      severity: 0.02,
+      alert_level: 'GREEN',
+      model_version: 'test_v1',
+    };
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => mockResponse,
+    } as Response);
+
+    // Send only 1 packet
+    await warmupService.handleSensorReading(makeReading(1));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
 });

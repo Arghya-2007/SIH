@@ -18,7 +18,7 @@ export class ProcessingService implements OnModuleInit, OnModuleDestroy {
   private nodeStatuses = new Map<string, NodeStatusState>();
 
   private watchdogInterval: NodeJS.Timeout | null = null;
-  private readonly STALE_TIMEOUT_MS = 8_000; // 8 seconds without data = offline
+  private readonly STALE_TIMEOUT_MS = 30_000; // 30 seconds without data = offline (supports alternating multi-node LoRa meshes)
 
   constructor(
     private readonly eventEmitter: EventEmitter2,

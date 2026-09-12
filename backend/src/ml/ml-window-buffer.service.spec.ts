@@ -93,4 +93,15 @@ describe('MlWindowBufferService', () => {
     expect(service.getBufferCount('NODE_A')).toBe(32);
     expect(service.getBufferCount('NODE_B')).toBe(10);
   });
+
+  it('should immediately return seed-padded 32x9 window when allowWarmup=true', () => {
+    const res = service.addReading(makeReading(1, 'tilt_x_deg', 0.85, 'NODE_NEW'), true);
+    expect(res).not.toBeNull();
+    expect(res?.nodeId).toBe('NODE_NEW');
+    expect(res?.window.length).toBe(32);
+    expect(res?.window[0].length).toBe(9);
+    // All rows should be padded with the seed vector
+    expect(res?.window[0][0]).toBe(0.85);
+    expect(res?.window[31][0]).toBe(0.85);
+  });
 });

@@ -70,7 +70,10 @@ export class MlWindowBufferService {
    * immediately triggers an inference pass once 32 readings have accumulated.
    * This guarantees minimal detection delay for rapid structural shifts.
    */
-  addReading(reading: ValidatedSensorReading): {
+  addReading(
+    reading: ValidatedSensorReading,
+    allowWarmup = false,
+  ): {
     nodeId: string;
     zoneId: string;
     window: number[][];
@@ -124,10 +127,21 @@ export class MlWindowBufferService {
       }
     }
 
-    // 3. Return full window if buffer is ready
-    if (buffer.length === ML_WINDOW_LENGTH) {
-      // Return a copy of the 32x9 window
-      const windowCopy = buffer.map((row) => [...row]);
+    // 3. Return full 32x9 window if buffer is ready or if warmup is enabled
+    if (buffer.length >= ML_WINDOW_LENGTH) {
+      const windowCopy = buffer.slice(-ML_WINDOW_LENGTH).map((row) => [...row]);
+      return {
+        nodeId,
+        zoneId,
+        window: windowCopy,
+      };
+    }
+
+    if (allowWarmup && buffer.length > 0) {
+      const paddingCount = ML_WINDOW_LENGTH - buffer.length;
+      const seedVector = buffer[0];
+      const padRows = Array.from({ length: paddingCount }, () => [...seedVector]);
+      const windowCopy = [...padRows, ...buffer.map((row) => [...row])];
       return {
         nodeId,
         zoneId,

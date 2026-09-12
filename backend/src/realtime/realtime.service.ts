@@ -65,18 +65,8 @@ export class RealtimeService {
     const zoneMap = this.statusSnapshot.get(zoneId)!;
     zoneMap.set(nodeId, status);
 
-    // Clear all old sensor data and shadow predictions when the node gets offline
-    if (status.status === 'offline') {
-      const readingsMap = this.snapshot.get(zoneId);
-      if (readingsMap) {
-        for (const key of readingsMap.keys()) {
-          if (key.startsWith(`${nodeId}:`)) {
-            readingsMap.delete(key);
-          }
-        }
-      }
-      this.shadowPredictions.get(zoneId)?.delete(nodeId);
-    }
+    // Retain latest sensor readings and shadow predictions in snapshot
+    // so dashboard displays last-known states with offline badge instead of blanking out.
   }
 
   updateShadowPrediction(prediction: ShadowMlPrediction) {
